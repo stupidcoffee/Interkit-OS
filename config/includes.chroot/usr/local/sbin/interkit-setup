@@ -93,9 +93,11 @@ finish() {
 }
 
 menu() {
-  local ch i m
+  local ch i m ssh_tip=""
   while :; do
     echo; echo "${c_b}interkit setup${c_0}"
+    [ -n "$ssh_tip" ] || { ssh_tip=$(hostname -I 2>/dev/null | awk '{print $1}'); ssh_tip="${ssh_tip:-<this-machine-IP>}"
+      say "  Tip: no copy/paste on this screen? From your own computer run:  ssh ${SUDO_USER:-<user>}@$ssh_tip  then  sudo interkit-setup"; }
     i=1; for m in $MODULES; do printf '  %d) %-11s %s\n' "$i" "$m" "$("mod_${m}_desc")"; i=$((i+1)); done
     echo "  a) all   d) DNS records   v) verify DNS   s) status   q) quit"
     read -r -p "> " ch || break

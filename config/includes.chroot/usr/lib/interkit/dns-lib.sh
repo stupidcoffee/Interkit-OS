@@ -50,6 +50,33 @@ dns_records() {
   fi
 }
 
+# dns_rel NAME -> what most DNS providers want in their "Name"/"Host" field: @ for the domain itself, else the part before it
+dns_rel() {
+  local n=${1%.}
+  if [ "$n" = "$BASE_DOMAIN" ]; then echo @
+  else case "$n" in *".$BASE_DOMAIN") echo "${n%."$BASE_DOMAIN"}";; *) echo "$n";; esac; fi
+}
+_f() { printf '      %-16s %s\n' "$1" "$2"; }
+# dns_form: every record as a fill-in form with the exact fields of a DNS provider's "add record" screen
+dns_form() {
+  local i=0 t n v p w
+  while IFS='|' read -r t n v p w; do
+    [ -n "$t" ] || continue; i=$((i+1))
+    echo "  [$i] $t record: $w"
+    _f "Type:" "$t"
+    _f "Name:" "$(dns_rel "$n")        (full name: $n)"
+    case $t in
+      A)    _f "IPv4 address:" "$v"; _f "Proxy:" "DNS only (grey cloud, not proxied)";;
+      AAAA) _f "IPv6 address:" "$v"; _f "Proxy:" "DNS only (grey cloud, not proxied)";;
+      MX)   _f "Mail server:" "$v"; _f "Priority:" "$p";;
+      TXT)  _f "Content:" "$v"; _f "" "(type it without quotation marks; the provider adds them)";;
+      SRV)  set -- $v; _f "Priority:" "$1"; _f "Weight:" "$2"; _f "Port:" "$3"; _f "Target:" "${4%.}";;
+    esac
+    _f "TTL:" "Auto (or 300)"
+    echo
+  done < <(dns_records)
+}
+
 dns_guide() {
   local ip4 ip6 line t n v p w
   has_svc mail || has_svc chat || has_svc derp || has_svc web || { warn "no services chosen yet; run the service modules first (or: interkit-setup all)"; }
@@ -58,6 +85,13 @@ dns_guide() {
     echo "Add these at your DNS provider (copy/paste), then run:  interkit-setup verify"
     echo "Use DNS-only records (if your provider has a proxy/CDN switch, turn it OFF)."
     echo
+    echo "How to fill in each record (one \"Add record\" per entry below):"
+    echo "  - Name: '@' means the domain itself. Type the short name; if your provider wants the full name, use the one in brackets."
+    echo "  - TTL: choose Auto, or 300. Priority is only used for MX and SRV."
+    echo "  - Do not add a dot at the end of a host name unless your provider asks for it."
+    echo
+    dns_form
+    echo "Summary table:"
     printf '%-6s %-40s %-5s %s\n' TYPE NAME PRIO VALUE
     while IFS='|' read -r t n v p w; do [ -n "$t" ] || continue; printf '%-6s %-40s %-5s %s\n' "$t" "$n" "$p" "$v"; done < <(dns_records)
     echo
@@ -68,6 +102,9 @@ dns_guide() {
     if has_svc mail; then echo; echo "Reverse DNS (PTR): ask your hosting provider to set the PTR of ${ip4:-your IP} to $MAIL_HOST (a DNS provider cannot do this)."; fi
     if [ -n "$ip4" ] && is_private_ip "$ip4"; then echo; echo "WARNING: $ip4 is a private address. This machine is behind NAT: forward the needed ports to it and use your public IP in the records."; fi
     echo; echo "Ports to open: $(dns_ports)"
+    echo; echo "Reading this on the server's screen? Open it on your own computer instead (so you can copy and paste):"
+    echo "  ssh <user>@<this-machine-IP>  then:  cat /var/lib/interkit/dns-guide.txt"
+    echo "  or in the Fossil web UI: wiki page \"DNS setup\" (log in as admin)."
   } | tee_guide
 }
 tee_guide() {  # print, save to a file, and publish as a Fossil wiki page (admin login) when the repo exists

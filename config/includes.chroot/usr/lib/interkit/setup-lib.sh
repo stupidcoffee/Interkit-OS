@@ -75,24 +75,48 @@ put_secret() {   # put_secret NAME VALUE
 }
 get_secret() { cat "$IK_SECRETS/$1.secret" 2>/dev/null; }
 have_secret() { [ -s "$IK_SECRETS/$1.secret" ]; }
+# _read_secret VAR "Prompt" [opt]   hidden input for API keys on a console with no clipboard:
+#   - "@/path/to/file" reads the value from a file (first line), e.g. on a USB stick mounted with `mount /dev/sdb1 /mnt`
+#   - after typing it shows the length and the last 4 characters so a typo is caught before it is saved
+#   - with "opt", an empty answer returns 1 (skipped)
+_read_secret() {
+  local var=$1 prompt=$2 opt=${3:-} reply f ok tail=""
+  if [ -z "${IK_SECRET_HINT:-}" ]; then
+    IK_SECRET_HINT=1
+    say "  No copy/paste on this screen? Either type the key (hidden), or enter  @/path/to/file  to read it from a file"
+    say "  (for example on a USB stick), or run interkit-setup over SSH from your own computer, where you can paste."
+  fi
+  while :; do
+    read -r -s -p "$prompt${opt:+ (empty to skip)}: " reply || die "no input (is this a terminal?)"; echo
+    if [ -z "$reply" ]; then [ -n "$opt" ] && return 1; warn "an answer is required"; continue; fi
+    case "$reply" in
+      @*) f=${reply#@}
+          [ -r "$f" ] || { warn "cannot read $f"; continue; }
+          reply=$(head -n1 "$f" | tr -d '\r\n ') ;;
+    esac
+    [ -n "$reply" ] || { warn "that was empty"; continue; }
+    [ "${#reply}" -ge 12 ] && tail=", ending in ...${reply: -4}"
+    read -r -p "  got ${#reply} characters$tail. Correct? [Y/n] " ok
+    case "$ok" in n|N|no) continue;; esac
+    printf -v "$var" '%s' "$reply"; return 0
+  done
+}
 # ask_secret VAR NAME "Prompt"   -> VAR from env, else stored secret NAME, else prompt (hidden)
 ask_secret() {
-  local var=$1 name=$2 prompt=$3 reply
+  local var=$1 name=$2 prompt=$3
   if [ -n "${!var:-}" ]; then put_secret "$name" "${!var}"; return 0; fi
   if have_secret "$name"; then printf -v "$var" '%s' "$(get_secret "$name")"; return 0; fi
   [ "$IK_QUIET" = 1 ] && die "missing secret: $var (non-interactive mode)"
-  read -r -s -p "$prompt: " reply; echo
-  [ -n "$reply" ] || die "$var is required"
-  printf -v "$var" '%s' "$reply"; put_secret "$name" "$reply"
+  _read_secret "$var" "$prompt"
+  put_secret "$name" "${!var}"
 }
 # ask_secret_opt VAR NAME "Prompt"  -> like ask_secret but empty is allowed (VAR stays empty)
 ask_secret_opt() {
-  local var=$1 name=$2 prompt=$3 reply
+  local var=$1 name=$2 prompt=$3
   if [ -n "${!var:-}" ]; then put_secret "$name" "${!var}"; return 0; fi
   if have_secret "$name"; then printf -v "$var" '%s' "$(get_secret "$name")"; return 0; fi
   [ "$IK_QUIET" = 1 ] && return 0
-  read -r -s -p "$prompt (empty to skip): " reply; echo
-  [ -n "$reply" ] && { printf -v "$var" '%s' "$reply"; put_secret "$name" "$reply"; }
+  _read_secret "$var" "$prompt" opt && put_secret "$name" "${!var}"
   return 0
 }
 

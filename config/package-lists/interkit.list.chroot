@@ -15,3 +15,5 @@ jq
 ssl-cert
 bind9-dnsutils
 kbd
+nano
+man-db

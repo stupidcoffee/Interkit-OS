@@ -10,6 +10,15 @@ Guided setup, in the spirit of `setup-alpine`, for services that need a domain, 
     sudo interkit-setup -f answers -q all        # non-interactive (answers from a file/environment)
     sudo interkit-setup status
 
+## No clipboard on the server console?
+
+- Run `interkit-setup` over SSH from your own computer (`ssh USER@IP`, find the IP with `ip -br a`) and paste there.
+- At any secret prompt (Cloudflare token, tunnel token) you can enter `@/path/to/file` to read the value from the first
+  line of a file, e.g. on a USB stick (`mount /dev/sdb1 /mnt`, then `@/mnt/token.txt`).
+- Typed secrets are hidden, but the length and last 4 characters are shown so a typo is caught before saving.
+- `interkit-setup dns` prints every record as a fill-in form (Type, Name, Value, Priority, TTL, proxy off) and is saved to
+  `/var/lib/interkit/dns-guide.txt` so you can read it from another computer.
+
 ## One domain, replaceable host names
 
 You enter your domain once (`example.com`); the host names derive from it and can be changed:
