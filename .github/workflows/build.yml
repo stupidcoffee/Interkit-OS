@@ -52,10 +52,18 @@ jobs:
         run: |
           git tag -f latest "$GITHUB_SHA"
           git push -f origin refs/tags/latest
+      - name: Release name
+        id: meta
+        run: |
+          if [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"; echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"; echo "name=latest (${GITHUB_SHA::7})" >> "$GITHUB_OUTPUT"
+          fi
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('latest ({0})', substr(github.sha, 0, 7)) }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           overwrite_files: true
           files: dist/*
