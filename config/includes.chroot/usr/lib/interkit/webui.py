@@ -30,26 +30,30 @@ def page(body, status_note=""):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>interkit setup</title>
 <style>
-:root{{--bg:#1515ab;--panel:#b2b2b2;--ink:#000;--accent:#a82d25;--ok:#1a6b2a}}
-@media (prefers-color-scheme:dark){{:root{{--panel:#c8c8c8}}}}
-body{{margin:0;background:var(--bg);font:16px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#fff}}
-main{{max-width:40rem;margin:0 auto;padding:1.5rem 1rem}}
-.box{{background:var(--panel);color:var(--ink);padding:1.2rem 1.2rem 1.4rem;border:2px solid #000;box-shadow:6px 6px 0 #000}}
-h1{{font-size:1.1rem;margin:0 0 .8rem;color:var(--accent)}}
-label{{display:block;margin:.8rem 0 .2rem;font-weight:bold}} small{{display:block;color:#333}}
-input,select{{width:100%;box-sizing:border-box;font:inherit;padding:.45rem;border:2px solid #000;background:#fff;color:#000}}
-.row{{display:flex;gap:.6rem;align-items:center}} .row input{{width:auto}}
-button{{margin-top:1.2rem;font:inherit;font-weight:bold;padding:.6rem 1.2rem;background:var(--accent);color:#fff;border:2px solid #000;cursor:pointer}}
-.err{{background:#fff;border:2px solid var(--accent);padding:.5rem;margin-bottom:.8rem;color:var(--accent)}}
-.ok{{color:var(--ok)}} details{{margin-top:1rem}}
-</style></head><body><main><div class="box">{status_note}{body}</div></main></body></html>"""
+/* same look as the interkit Fossil skin: blue background, white text, lowercase, narrow column, no boxes */
+:root{{font-family:sans-serif}}
+html,body{{background:#1515ab}}
+body{{color:#fff;text-transform:lowercase;font-size:20px;line-height:1.4;padding:0 25px;margin:30px auto;max-width:650px;overflow-wrap:break-word}}
+h1{{font-size:30px;font-weight:400;margin:40px 0 10px;color:#fff}}
+p,label,summary,small{{color:#fff}}
+label{{display:block;margin:22px 0 4px}}
+small{{display:block;opacity:.6;font-size:16px}}
+input,select{{width:100%;box-sizing:border-box;font:inherit;font-size:18px;padding:6px;border:0;border-radius:0;background:#fff;color:#000;text-transform:none}}
+input[type=checkbox]{{width:auto;margin:0 10px 0 0}}
+.row{{display:flex;align-items:center;margin-top:22px}}.row label{{margin:0}}
+button{{margin-top:30px;font:inherit;padding:6px 18px;border:0;border-radius:0;background:#fff;color:#1515ab;cursor:pointer}}
+button:hover{{background:#feb200;color:#000}}
+details{{margin-top:22px}}summary{{cursor:pointer;opacity:.7}}
+.err{{color:#ff8a80;margin:0 0 10px}}
+.ok{{color:#fff}}
+</style></head><body><main>{status_note}{body}</main></body></html>"""
 
 
 def form(error="", values=None):
     v = values or {}
     e = lambda k: html.escape(v.get(k, ""), quote=True)
     sel = lambda k, x: " selected" if v.get(k, "http") == x else ""
-    err = f'<div class="err">{html.escape(error)}</div>' if error else ""
+    err = f'<p class="err">{html.escape(error)}</p>' if error else ""
     return page(f"""<h1>interkit setup</h1>{err}
 <p>Fill this in once. It is saved on the server and this page then closes itself.</p>
 <form method="post" action="/" autocomplete="off">
