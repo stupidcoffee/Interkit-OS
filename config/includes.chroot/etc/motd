@@ -17,22 +17,25 @@
   interkit - Debian + Fossil
 
 
-  Welcome to interkit - a small Debian server with mail, chat, a relay and a web admin.
+  Welcome to interkit - a Debian server: mail, chat, relay and web admin.
 
-  FIRST: run the guided setup (it asks for your domain and walks you through everything):
+  FIRST, run the guided setup (it asks for your domain, then does the rest):
 
         sudo interkit-setup
 
   New to Linux? The basics:
-    ls                 list files                  cd FOLDER       go into a folder (cd .. = back)
-    pwd                where am I                  cat FILE        show a file
-    vim FILE / nano    edit a file (nano is easier; in vim quit with Esc then :q!)
-    sudo COMMAND       run a command as administrator (asks for YOUR password; nothing shows while you type)
-    ip -br a           show this machine's IP address (to connect from another computer: ssh USER@THAT-IP)
-    htop               what is running (q to quit)      man COMMAND    manual for a command (q to quit)
-    reboot / poweroff  restart / shut down (use sudo)   Tab key        completes names; Up arrow = previous command
-  No copy/paste on this screen? Log in from your own computer with ssh and paste there.
-  Web admin (Fossil): from another computer open  http://THAT-IP:8080  - user admin, password: sudo cat /root/fossil-admin-password
-  (setup puts the DNS records on its wiki page "DNS setup", ready to copy).
-  Keys from another computer's browser: sudo interkit-setup web-ui   (or put interkit.env on a USB stick)
+    ls            list files          cd DIR     go into a folder (cd .. = up)
+    pwd           where am I          cat FILE   show a file
+    nano FILE     edit a file (vim: quit with Esc, then :q!)
+    sudo COMMAND  run as administrator (type your password; nothing shows)
+    ip -br a      show this machine's IP address
+    htop          what is running (q quits)    man COMMAND   manual (q quits)
+    sudo reboot / sudo poweroff       Tab completes names, Up = last command
+
+  No copy/paste on this screen? Use ssh from your own computer:
+    ssh USER@THAT-IP
+  Enter API keys in a browser:  sudo interkit-setup web-ui
+  (or put interkit.env on a USB stick).
+  Web admin (Fossil), from another computer:  http://THAT-IP:8080
+    user admin, password: sudo cat /root/fossil-admin-password
   Help: interkit-setup -h

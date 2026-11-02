@@ -13,9 +13,11 @@ The text installer (default Debian blue theme, on the screen console):
 ![setup web form](docs/screenshots/web-ui.png)
 
 The Fossil admin web UI with the interkit skin (blue background, white text), showing the generated "DNS setup" page
-(sample data, rendered on a development machine):
+(sample data, rendered on a development machine), and the login page on the real image (booted in QEMU):
 
 ![fossil skin](docs/screenshots/fossil-skin.png)
+
+![fossil login](docs/screenshots/fossil-login.png)
 
 ## Local build (inside a Debian VM, e.g. UTM)
     sudo ./build.sh                 # host arch

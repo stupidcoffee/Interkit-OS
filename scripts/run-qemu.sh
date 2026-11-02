@@ -13,13 +13,14 @@
 #          -r WxH   screen size (default 1024x640; arm64 only) -a ARCH arm64 (default) or amd64
 #          -p H:G   forward host port H to guest port G (repeatable; default 2223:22 and 18080:8080)
 #          -b       boot from the disk only      -n  dry run: print the command, do not start
+#          -M SOCK  also open a QEMU monitor on a unix socket (screendump, sendkey ...; the serial port stays on stdio)
 set -eu
 
-ARCH=arm64 DISK=./interkit-disk.qcow2 SIZE=16G MEM=3G CPUS=2 RES=1024x640 BOOTDISK=0 DRY=0 PORTS=""
-while getopts "d:S:m:c:r:a:p:bnh" o; do
+ARCH=arm64 DISK=./interkit-disk.qcow2 SIZE=16G MEM=3G CPUS=2 RES=1024x640 BOOTDISK=0 DRY=0 PORTS="" MON=""
+while getopts "d:S:m:c:r:a:p:M:bnh" o; do
   case $o in
     d) DISK=$OPTARG;; S) SIZE=$OPTARG;; m) MEM=$OPTARG;; c) CPUS=$OPTARG;; r) RES=$OPTARG;; a) ARCH=$OPTARG;;
-    p) PORTS="$PORTS $OPTARG";; b) BOOTDISK=1;; n) DRY=1;; h|*) sed -n '2,17p' "$0"; exit 2;;
+    p) PORTS="$PORTS $OPTARG";; M) MON=$OPTARG;; b) BOOTDISK=1;; n) DRY=1;; h|*) sed -n '2,18p' "$0"; exit 2;;
   esac
 done
 shift $((OPTIND-1))
@@ -73,8 +74,9 @@ fi
 set -- "$@" -drive "if=none,id=hd,format=qcow2,file=$DISK" -device virtio-blk-pci,drive=hd,bootindex=1
 if [ "$ARCH" = arm64 ]; then set -- "$@" -device "virtio-gpu-pci,xres=${RES%x*},yres=${RES#*x}"; else set -- "$@" -vga virtio; fi
 if [ "$OS" = Darwin ]; then set -- "$@" -display cocoa; else set -- "$@" -display gtk; fi
-set -- "$@" -netdev "$NET" -device virtio-net-pci,netdev=n0 -serial mon:stdio
+set -- "$@" -netdev "$NET" -device virtio-net-pci,netdev=n0
 
+if [ -n "$MON" ]; then rm -f "$MON"; set -- "$@" -serial stdio -monitor "unix:$MON,server,nowait"; else set -- "$@" -serial mon:stdio; fi
 if [ "$DRY" = 1 ]; then echo "$*" | sed 's/ -/ \\\n  -/g'; exit 0; fi
 FIRST=${PORTS%% *}
 echo "interkit in QEMU: the window is the screen, this terminal is the serial console. Quit: Ctrl-a then x."

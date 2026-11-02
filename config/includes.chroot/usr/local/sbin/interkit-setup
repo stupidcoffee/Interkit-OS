@@ -87,10 +87,10 @@ cmd_webui() {
   say; info "Setup in your browser"
   for cur in $ips; do say "  open:        https://$cur:$port/"; done
   say "  one-time code: ${c_b}$code${c_0}"
-  say "  Your browser will warn about the certificate (it is made just now, on this machine). Check that its SHA-256"
-  say "  fingerprint matches this one before you type anything:"
-  say "    $fp"
-  say "  The page closes after one submit, after 5 wrong codes, or after 15 minutes. Press Ctrl-C to cancel."
+  say "  Your browser will warn about the certificate (made just now, on this machine)."
+  say "  Check that its SHA-256 fingerprint matches this one before typing anything:"
+  say "    ${fp:0:47}"; say "    ${fp:48}"
+  say "  The page closes after one submit, 5 wrong codes or 15 minutes (Ctrl-C cancels)."
   chown -R nobody:nogroup "$dir" 2>/dev/null || true
   if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null 2>&1; then
     IK_WEBUI_CODE=$code setpriv --reuid=nobody --regid=nogroup --clear-groups \
@@ -103,6 +103,14 @@ cmd_webui() {
   local keep; keep=$(mktemp /run/interkit-env.XXXXXX); cat "$out" > "$keep"; track_tmp "$keep"
   ANSWERS=$keep; load_env "$keep"
   info "settings received from the browser"
+  return 0
+}
+# after the form: save the answers by running the domain module, then offer the rest (they would be lost otherwise)
+cmd_webui_flow() {
+  cmd_webui || return 1
+  local go=""
+  yesno go "Continue with the setup now (domain and services)?" y
+  [ "$go" = y ] && run_all
   return 0
 }
 
@@ -163,7 +171,7 @@ menu() {
     case $ch in
       [1-9]) m=$(echo $MODULES | cut -d' ' -f"$ch"); [ -n "$m" ] && ( reload_answers; run_module "$m" ) ;;
       a) ( reload_answers; run_all ) ;;
-      w) cmd_webui ;;
+      w) ( cmd_webui_flow ) ;;
       d) ( reload_answers; cmd_dns ) ;;
       v) ( reload_answers; cmd_verify ) ;;
       s) reload_answers; show_status ;;
@@ -182,7 +190,7 @@ for arg in "$@"; do
     status) show_status ;;
     all) run_all || exit 1 ;;
     dns) cmd_dns ;;
-    web-ui) cmd_webui || exit 1 ;;
+    web-ui) cmd_webui_flow || exit 1 ;;
     verify) cmd_verify || exit 1 ;;
     *) run_module "$arg" || exit 1 ;;
   esac
