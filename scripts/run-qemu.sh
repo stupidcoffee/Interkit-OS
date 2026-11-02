@@ -5,8 +5,8 @@
 #   scripts/run-qemu.sh -b                      # boot the installed disk only (no ISO)
 #   scripts/run-qemu.sh -n interkit.iso         # just print the QEMU command
 #
-# The screen opens in a window (GRUB, console). The serial console is THIS terminal: the text installer and the
-# serial login appear here. Quit QEMU with  Ctrl-a  then  x .
+# The screen opens in a window (GRUB, installer, console). This terminal is the serial port (only used if the ISO
+# was built with SERIAL_CONSOLE=1). Quit QEMU with  Ctrl-a  then  x .
 #
 # Options: -d DISK  target disk image (default ./interkit-disk.qcow2, created at -S size if missing)
 #          -S SIZE  disk size when creating (default 16G)     -m MEM  RAM (default 3G)      -c N  CPUs (default 2)
@@ -42,6 +42,9 @@ case "$OS:$ARCH:$HOST" in
   Linux:arm64:aarch64|Linux:amd64:x86_64) if [ -w /dev/kvm ]; then ACCEL="-accel kvm"; else ACCEL="-accel tcg"; CPU=max; fi ;;
   *) ACCEL="-accel tcg"; CPU=max; echo "note: no hardware acceleration for $ARCH on $HOST; this will be slow" >&2 ;;
 esac
+
+# under TCG the guest can't use VT-x/SVM anyway; hide them so x86 kernels don't log "VMX disabled by BIOS"
+case "$ACCEL:$ARCH" in *tcg:amd64) CPU="$CPU,vmx=off,svm=off" ;; esac
 
 # UEFI firmware (arm64 needs it; amd64 boots fine with SeaBIOS)
 FW=""; VARS=""

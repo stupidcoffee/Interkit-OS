@@ -11,22 +11,14 @@ Brand assets (sources) and where they are used by the build:
                                               a debconf upgrade could overwrite it)
 - wallpaper.png is not used yet (no desktop in the image).
 
-## Inter Mono (system font)
+## Inter Mono (splash only)
 
-Inter Mono (Renzhi Li; SIL Open Font License 1.1, https://openfontlicense.org/) is used for the boot menu, the boot splash,
-the Linux text console and the installed system's GRUB. Only the Regular weight exists; bold is synthesized.
-The font **files are kept out of Fossil**: the OFL requires the licence text to travel with every copy of the font, and this
-repository does not carry that text yet. The licence allows bundling and redistributing, so adding the OFL text next to the
-TTF would let CI builds include it. Clean checkouts (CI) fall back to GRUB's default font and DejaVu Sans.
-
-Local-only files (ignored by Fossil):
-- `config/includes.chroot/usr/share/fonts/truetype/inter-mono/InterMono-Regular.ttf` - lets the build render the splash text
-  (`splash.svg` uses `Inter Mono, DejaVu Sans`).
-- `config/bootloaders/grub-pc/` - theme override: `theme.cfg`, `live-theme/theme.txt`, `live-theme/intermono-{Regular,Bold}-16.pf2`
-  (made with `grub-mkfont [-b] -s 16 -r 0x20-0x7e,0xa0-0xff,0x2190-0x2193,0x2500-0x25ff`).
-- `config/includes.chroot/boot/grub/fonts/intermono-Regular-16.pf2` + tracked `etc/default/grub.d/10-interkit.cfg`: the installed
-  system's GRUB font (and a visible menu); `etc/grub.d/41_interkit_font` adds GRUB's unicode font as a fallback.
-- `config/includes.chroot/usr/share/consolefonts/InterMono-{10x20,16x32}.psf` - console fonts made by `branding/mkpsf.py`
-  (Linux console fonts must have exactly 256 glyphs). `interkit-console-font.service` loads one on tty1-6 at boot:
-  16x32 on framebuffers 1920 px wide or more, else 10x20 (the unit needs `kbd`'s `setfont`).
+Inter Mono (Renzhi Li; SIL Open Font License 1.1) is used only to render the boot splash text. It is **not** used for the GRUB
+menu or the Linux console any more: the rasterized bitmap fonts looked blurry. GRUB uses its built-in Unifont (crisp pixel font)
+and the console keeps the stock Debian font.
+Look: the Debian text installer's default blue theme everywhere. GRUB uses plain text colours (`theme.cfg`, `10-interkit.cfg`: white on
+blue, gray bars, red selection) and the tty gets `vt.color=0x1f` (white on blue) from `build.sh`.
+`config/includes.chroot/usr/share/fonts/truetype/inter-mono/InterMono-Regular.ttf` lets the build render the splash text
+(`splash.svg` uses `Inter Mono, DejaVu Sans`). `mkpsf.py` is kept for reference; nothing loads its output.
+- `config/bootloaders/grub-pc/` - theme override: `theme.cfg`.
 - `installer-banner.png` is a rendered image of the word "interkit".

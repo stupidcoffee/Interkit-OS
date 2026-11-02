@@ -1,7 +1,0 @@
-#!/bin/sh
-# Load the Inter Mono console font sized for the screen: 16x32 on high-resolution framebuffers, else 10x20.
-d=/usr/share/consolefonts
-w=$(cut -d, -f1 /sys/class/graphics/fb0/virtual_size 2>/dev/null); w=${w:-0}
-if [ "$w" -ge 1920 ] && [ -f "$d/InterMono-16x32.psf" ]; then f="$d/InterMono-16x32.psf"; else f="$d/InterMono-10x20.psf"; fi
-[ -f "$f" ] || exit 0
-for t in 1 2 3 4 5 6; do /usr/bin/setfont -C "/dev/tty$t" "$f"; done

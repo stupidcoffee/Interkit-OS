@@ -34,9 +34,14 @@ case "$ARCH" in
   arm64) BOOT="grub-efi";          SERIAL="ttyAMA0,115200" ;;
   *)     echo "unsupported ARCH=$ARCH (add a case in build.sh)"; exit 1 ;;
 esac
-# Headless server: the TEXT installer (the graphical one needs X and shows nothing on many VMs/consoles), and a
-# serial console next to the screen for both the installer and the live system.
-CONSOLES="console=tty0 console=$SERIAL"
+# Headless server: the TEXT installer (the graphical one needs X and shows nothing on many VMs/consoles).
+# Screen console only by default.  Any console=ttyS* makes the Debian installer draw on the serial port instead of
+# the screen (whatever the order), so on real hardware without a serial cable you only see a blinking "_".
+# SERIAL_CONSOLE=1 adds the serial port (for headless boxes / QEMU -nographic) -- then the installer is serial-only.
+CONSOLES="console=tty0"
+[[ "${SERIAL_CONSOLE:-0}" == 1 ]] && CONSOLES="console=tty0 console=$SERIAL"
+# Linux console colours = the text installer's look: white (f) on blue (1)
+CONSOLES="$CONSOLES vt.color=0x1f"
 
 lb config \
   --distribution "$SUITE" \
