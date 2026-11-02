@@ -2,6 +2,21 @@
 
 Debian-based distro built with live-build (Debian trixie, XFCE, installable ISO).
 
+## Screenshots
+
+The text installer (default Debian blue theme, on the screen console):
+
+![installer](docs/screenshots/installer.png)
+
+`interkit-setup web-ui`: enter the domain and API keys from another computer's browser (one-time code, HTTPS):
+
+![setup web form](docs/screenshots/web-ui.png)
+
+The Fossil admin web UI with the interkit skin (blue background, white text), showing the generated "DNS setup" page
+(sample data, rendered on a development machine):
+
+![fossil skin](docs/screenshots/fossil-skin.png)
+
 ## Local build (inside a Debian VM, e.g. UTM)
     sudo ./build.sh                 # host arch
     sudo ARCH=amd64 ./build.sh      # target arch (needs native/emulated amd64 host)

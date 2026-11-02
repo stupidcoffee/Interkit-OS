@@ -104,7 +104,12 @@ dns_guide() {
     echo; echo "Ports to open: $(dns_ports)"
     echo; echo "Reading this on the server's screen? Open it on your own computer instead (so you can copy and paste):"
     echo "  ssh <user>@<this-machine-IP>  then:  cat /var/lib/interkit/dns-guide.txt"
-    echo "  or in the Fossil web UI: wiki page \"DNS setup\" (log in as admin)."
+    if has_svc web && [ -f "$DEST/etc/systemd/system/interkit-fossil-web.service.d/10-https.conf" ]; then
+      echo "  or in your browser: https://${WEB_HOST}:${WEB_PORT:-8443}/  -> wiki page \"DNS setup\""
+    else
+      echo "  or in your browser: http://<this-machine-IP>:8080/  -> wiki page \"DNS setup\"  (plain http: use a trusted network)"
+    fi
+    echo "  Log in as admin; the password is in /root/fossil-admin-password (sudo cat /root/fossil-admin-password)."
   } | tee_guide
 }
 tee_guide() {  # print, save to a file, and publish as a Fossil wiki page (admin login) when the repo exists

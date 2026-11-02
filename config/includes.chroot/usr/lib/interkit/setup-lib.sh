@@ -287,5 +287,47 @@ require_domain() {
   ACME_CHALLENGE="${ACME_CHALLENGE:-http}"
 }
 
+# ---- answer files / USB stick ----------------------------------------------------------------
+# Variables an answer file (-f FILE, or interkit.env / .env on a USB stick) may set. Anything else is ignored, so a file
+# can never overwrite PATH, IFS and the like.
+IK_ENV_VARS=" BASE_DOMAIN ACME_EMAIL ACME_CHALLENGE MAIL_HOST CHAT_HOST DERP_HOST WEB_HOST WEB_PORT MAIL_DOMAIN DKIM_SELECTOR
+ XMPP_DOMAIN XMPP_ADMIN DERP_PORT DERP_STUN DERP_VERIFY_URL DERP_OPEN_OK CF_ZONE CF_API_TOKEN CF_TUNNEL_TOKEN DDNS_ENABLE
+ ENABLED_SERVICES IK_PUBLIC_IP4 IK_PUBLIC_IP6 "
+# load_env FILE   read KEY=VALUE lines (optional "export ", optional quotes, # comments). The file is NEVER executed.
+load_env() {
+  local f=$1 line k v
+  [ -r "$f" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}; line=${line#export }
+    case "$line" in ''|'#'*) continue;; esac
+    [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
+    k=${line%%=*}; v=${line#*=}
+    case "$v" in \"*\") v=${v#\"}; v=${v%\"};; \'*\') v=${v#\'}; v=${v%\'};; esac
+    case "$IK_ENV_VARS" in *[[:space:]]"$k"[[:space:]]*) printf -v "$k" '%s' "$v";; *) warn "$f: ignoring unknown setting $k";; esac
+  done < "$f"
+}
+# find_usb_env  -> prints the path of a private copy (in /run) of interkit.env, .env or interkit.conf found on a
+# removable drive (mounted read-only if it is not mounted yet, unmounted again afterwards). Returns 1 if none.
+find_usb_env() {
+  local dev rm fs mp mnt="" f name out="" tmp
+  command -v lsblk >/dev/null 2>&1 || return 1
+  while read -r dev rm fs mp; do
+    [ "$rm" = 1 ] && [ -n "$fs" ] || continue
+    if [ -n "$mp" ]; then mnt=$mp; own=0
+    else mnt=$(mktemp -d /run/interkit-usb.XXXXXX); own=1
+      mount -o ro,nosuid,nodev,noexec "$dev" "$mnt" 2>/dev/null || { rmdir "$mnt"; continue; }
+    fi
+    for name in interkit.env .env interkit.conf; do
+      f="$mnt/$name"
+      if [ -f "$f" ]; then
+        tmp=$(umask 077; mktemp /run/interkit-env.XXXXXX); cat "$f" > "$tmp"; out=$tmp; IK_USB_DEV=$dev; IK_USB_NAME=$name; break
+      fi
+    done
+    if [ "$own" = 1 ]; then umount "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null; fi
+    [ -n "$out" ] && { printf '%s' "$out"; return 0; }
+  done < <(lsblk -rno PATH,RM,FSTYPE,MOUNTPOINT 2>/dev/null)
+  return 1
+}
+
 # shellcheck disable=SC1091
 . "${IK_LIB:-/usr/lib/interkit}/dns-lib.sh"

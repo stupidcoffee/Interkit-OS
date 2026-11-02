@@ -24,7 +24,7 @@ mod_web_run() {
 # managed by interkit-setup: serve the Fossil web UI over HTTPS with the sing-box ACME certificate
 [Service]
 ExecStart=
-ExecStart=/usr/bin/fossil server /var/lib/fossil --repolist --port $WEB_PORT --cert $cert/fullchain.pem --pkey $cert/privkey.pem
+ExecStart=/usr/bin/fossil server /var/lib/fossil --repolist --skin /usr/share/interkit/fossil-skin --port $WEB_PORT --cert $cert/fullchain.pem --pkey $cert/privkey.pem
 SupplementaryGroups=ssl-cert
 EOF
     run systemctl daemon-reload

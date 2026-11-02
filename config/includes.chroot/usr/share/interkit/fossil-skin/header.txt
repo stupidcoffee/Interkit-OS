@@ -1,0 +1,19 @@
+<header>
+  <nav class="navigation" title="Main Menu">
+    <h1 id="hbdrop" class='hbdrop' title="sitemap"></h1>
+    <div class="status user">
+      <th1>
+        if {[info exists login]} {
+          set logintext "<a href='$home/login'>$login</a>\n"
+        } else {
+          set logintext "<a href='$home/login'>Login</a>\n"
+        }
+        html $logintext
+      </th1>
+    </div>
+    
+    <th1>
+      html "<a id='hbbtn' href='$home/sitemap' aria-label='Site Map'>index</a>"
+    </th1>
+  </nav>
+</header>

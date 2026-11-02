@@ -7,7 +7,7 @@ Wants=network-online.target interkit-fossil-init.service
 User=fossil
 Group=fossil
 Environment=HOME=/var/lib/fossil
-ExecStart=/usr/bin/fossil server /var/lib/fossil --repolist --port 8080
+ExecStart=/usr/bin/fossil server /var/lib/fossil --repolist --skin /usr/share/interkit/fossil-skin --port 8080
 Restart=on-failure
 NoNewPrivileges=yes
 ProtectSystem=strict

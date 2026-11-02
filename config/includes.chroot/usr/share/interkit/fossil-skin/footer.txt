@@ -1,0 +1,28 @@
+<br><br><br>
+<footer>
+  <nav class="navigation" title="Main Menu">
+    <h1 id="hbdrop" class='hbdrop' title="sitemap"></h1>
+    <div class="status user">
+      <th1>
+        if {[info exists login]} {
+          set logintext "<a id='userbtn' href='$home/login'><svg width='15' height='20' viewBox='0 0 15 20' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M15 0V10H10V15H15V20H0V15H5V0H15Z' fill='#C9C9C9'/></svg></a>\n"
+        } else {
+          set logintext "<a id='userbtn' href='$home/login'><svg width='15' height='20' viewBox='0 0 15 20' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M15 0V10H10V15H15V20H0V15H5V0H15Z' fill='#C9C9C9'/></svg></a>\n"
+        }
+        html $logintext
+      </th1>
+    </div>
+
+    <th1>
+      html "<a id='hbbtn' href='$home/sitemap' aria-label='Site Map'><svg width='35' height='25' viewBox='0 0 35 25' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M35 25H10V20H0V5H10V0H35V25ZM5 15H10V10H5V15Z' fill='#C9C9C9'/></svg></a>"
+    </th1>
+  </nav>
+  <style>
+    #hbbtn:hover svg path {
+      fill: #FEB200;
+    }
+    #userbtn:hover svg path {
+      fill: #FF8A80;
+    }
+  </style>
+</footer>

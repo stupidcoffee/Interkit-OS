@@ -32,4 +32,7 @@
     htop               what is running (q to quit)      man COMMAND    manual for a command (q to quit)
     reboot / poweroff  restart / shut down (use sudo)   Tab key        completes names; Up arrow = previous command
   No copy/paste on this screen? Log in from your own computer with ssh and paste there.
+  Web admin (Fossil): from another computer open  http://THAT-IP:8080  - user admin, password: sudo cat /root/fossil-admin-password
+  (setup puts the DNS records on its wiki page "DNS setup", ready to copy).
+  Keys from another computer's browser: sudo interkit-setup web-ui   (or put interkit.env on a USB stick)
   Help: interkit-setup -h

@@ -15,8 +15,20 @@ Guided setup, in the spirit of `setup-alpine`, for services that need a domain, 
 - Run `interkit-setup` over SSH from your own computer (`ssh USER@IP`, find the IP with `ip -br a`) and paste there.
 - At any secret prompt (Cloudflare token, tunnel token) you can enter `@/path/to/file` to read the value from the first
   line of a file, e.g. on a USB stick (`mount /dev/sdb1 /mnt`, then `@/mnt/token.txt`).
+- **Browser form:** `sudo interkit-setup web-ui` (menu: `w`) prints a URL like `https://<IP>:8765/`, a one-time code and the
+  certificate fingerprint. Open the URL on another computer, compare the fingerprint your browser shows (the certificate is
+  self-signed and made on the spot, so expect a warning), then fill in the domain, certificate method and API tokens and paste
+  them. The server then saves them like the `.env` loader does and closes. It runs as `nobody`, uses HTTPS only, ends after one
+  successful submit, after 5 wrong codes or after 15 minutes, validates every field, logs nothing, and never executes input.
+  Only use it on a network you trust; it listens on all interfaces while it is open.
+- **USB stick with a `.env`:** copy `docs/interkit.env.example` to the stick as `interkit.env` (or `.env`), fill in the
+  domain and API keys, plug it in and run `sudo interkit-setup`. It finds the file on any removable drive, asks once, and uses
+  the values instead of prompting (`interkit-setup -u` does it without asking). The file is read as plain `KEY=VALUE`
+  lines, never executed, and only known settings are accepted. It is copied to memory (`/run`) and removed on exit; API keys
+  are stored in `/etc/interkit/secrets` like typed ones. Delete the file from the stick afterwards: it holds secrets in
+  plain text.
 - Typed secrets are hidden, but the length and last 4 characters are shown so a typo is caught before saving.
-- `interkit-setup dns` prints every record as a fill-in form (Type, Name, Value, Priority, TTL, proxy off) and is saved to
+- `interkit-setup dns` also publishes to the Fossil web UI (wiki page "DNS setup", login admin, password in `/root/fossil-admin-password`) so you can copy it from another computer. It prints every record as a fill-in form (Type, Name, Value, Priority, TTL, proxy off) and is saved to
   `/var/lib/interkit/dns-guide.txt` so you can read it from another computer.
 
 ## One domain, replaceable host names

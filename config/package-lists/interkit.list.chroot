@@ -17,3 +17,5 @@ bind9-dnsutils
 kbd
 nano
 man-db
+python3
+openssl

@@ -7,6 +7,7 @@ LIB="${IK_LIB:-/usr/lib/interkit}"
 
 MODULES="domain cloudflare web derp xmpp postfix"
 ANSWERS=""
+USE_USB=0
 
 usage() {
   cat <<'EOF'
@@ -22,8 +23,10 @@ Modules:   domain      your domain, host names (mail.xxx.com, chat.xxx.com ...) 
            dns         show the DNS records to add at your DNS provider (copy/paste; also a Fossil wiki page)
            verify      check those DNS records, then request the certificates
            status      show what is configured
+           web-ui      enter the domain and API keys in a browser on another computer (HTTPS, one-time code)
 
 Options:   -f FILE     read answers (VAR=value lines) from FILE, like setup-alpine -f
+           -u          read answers (API keys ...) from interkit.env or .env on a USB stick (also offered at start)
            -q          non-interactive: never prompt; use answers, environment and defaults
            -n          dry run: write files under $DEST only; no apt, systemctl or network
            -h          this help
@@ -33,9 +36,9 @@ With no module a menu is shown. Answers are saved in /etc/interkit/setup.conf, s
 EOF
 }
 
-while getopts "f:qnh" o; do
+while getopts "f:uqnh" o; do
   case $o in
-    f) ANSWERS=$OPTARG;; q) IK_QUIET=1;; n) IK_DRYRUN=1;; h) usage; exit 0;; *) usage; exit 2;;
+    f) ANSWERS=$OPTARG;; u) USE_USB=1;; q) IK_QUIET=1;; n) IK_DRYRUN=1;; h) usage; exit 0;; *) usage; exit 2;;
   esac
 done
 shift $((OPTIND-1))
@@ -43,11 +46,67 @@ export IK_QUIET IK_DRYRUN
 
 if [ "$(id -u)" != 0 ] && [ -z "$DEST" ]; then die "run as root (sudo interkit-setup)"; fi
 [ -f "$IK_CONF" ] && . "$IK_CONF"
-if [ -n "$ANSWERS" ]; then [ -f "$ANSWERS" ] || die "answer file not found: $ANSWERS"; . "$ANSWERS"; fi
+if [ -n "$ANSWERS" ]; then [ -f "$ANSWERS" ] || die "answer file not found: $ANSWERS"; load_env "$ANSWERS"; fi
 
-for f in "$LIB"/setup.d/*.sh; do . "$f"; done
+# a USB stick with interkit.env / .env: explicit with -u, offered in the interactive menu (never in -q unless -u).
+# The values are read into memory-backed /run (removed on exit); API keys end up in /etc/interkit/secrets as usual.
+IK_TMP=""
+track_tmp() { IK_TMP="$IK_TMP $1"; }                 # temp files holding secrets: removed when we exit
+trap 'rm -rf $IK_TMP' EXIT
+use_usb_env() {
+  local f; f=$(find_usb_env) || return 1
+  info "found $IK_USB_NAME on $IK_USB_DEV"
+  track_tmp "$f"; ANSWERS=$f; load_env "$f"
+  say "  Loaded. It contains secrets in plain text: delete it from the stick when you are done."
+}
+if [ "$USE_USB" = 1 ]; then use_usb_env || die "no interkit.env / .env found on a removable drive (is the stick plugged in?)"
+elif [ -z "$ANSWERS" ] && [ "$IK_QUIET" != 1 ] && [ $# -eq 0 ]; then
+  if f=$(find_usb_env); then
+    track_tmp "$f"
+    info "found $IK_USB_NAME on the USB drive $IK_USB_DEV"
+    read -r -p "  Use it for your domain and API keys? [Y/n] " yn
+    case "$yn" in n|N|no) ;; *) ANSWERS=$f; load_env "$f"; say "  Loaded (delete the file from the stick when you are done: it holds secrets in plain text).";; esac
+  fi
+fi
 
-reload_answers() { [ -f "$IK_CONF" ] && . "$IK_CONF"; [ -n "$ANSWERS" ] && . "$ANSWERS"; return 0; }
+# web-ui: a one-time HTTPS form (webui.py) so the domain and API keys can be entered from another computer's browser,
+# where copy/paste works. Self-signed throw-away certificate (check the fingerprint), one-time code, runs as "nobody".
+cmd_webui() {
+  need python3; need openssl
+  local port="${IK_WEBUI_PORT:-8765}" dir ip ips code out rc=0 fp cur
+  dir=$(mktemp -d /run/interkit-webui.XXXXXX) || die "cannot create a temporary directory"
+  track_tmp "$dir"
+  ips=$(hostname -I 2>/dev/null); ip=${ips%% *}; [ -n "$ip" ] || ip=127.0.0.1
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj "/CN=interkit" \
+    -addext "subjectAltName=IP:$ip" -keyout "$dir/key.pem" -out "$dir/cert.pem" 2>/dev/null || die "could not create a certificate"
+  fp=$(openssl x509 -noout -fingerprint -sha256 -in "$dir/cert.pem" | cut -d= -f2)
+  code=$(LC_ALL=C tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' </dev/urandom 2>/dev/null | head -c 8)
+  [ "${#code}" = 8 ] || die "could not generate a code"
+  out="$dir/answers.env"; : > "$out"
+  chmod 700 "$dir"; chmod 600 "$dir"/*
+  say; info "Setup in your browser"
+  for cur in $ips; do say "  open:        https://$cur:$port/"; done
+  say "  one-time code: ${c_b}$code${c_0}"
+  say "  Your browser will warn about the certificate (it is made just now, on this machine). Check that its SHA-256"
+  say "  fingerprint matches this one before you type anything:"
+  say "    $fp"
+  say "  The page closes after one submit, after 5 wrong codes, or after 15 minutes. Press Ctrl-C to cancel."
+  chown -R nobody:nogroup "$dir" 2>/dev/null || true
+  if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null 2>&1; then
+    IK_WEBUI_CODE=$code setpriv --reuid=nobody --regid=nogroup --clear-groups \
+      python3 -I "$LIB/webui.py" --port "$port" --cert "$dir/cert.pem" --key "$dir/key.pem" --out "$out" || rc=$?
+  else
+    IK_WEBUI_CODE=$code python3 -I "$LIB/webui.py" --port "$port" --cert "$dir/cert.pem" --key "$dir/key.pem" --out "$out" || rc=$?
+  fi
+  case $rc in 0) ;; 2) warn "timed out: nothing was saved"; return 1;; 3) warn "too many wrong codes: nothing was saved"; return 1;; *) warn "the web page stopped (status $rc)"; return 1;; esac
+  [ -s "$out" ] || { warn "nothing received"; return 1; }
+  local keep; keep=$(mktemp /run/interkit-env.XXXXXX); cat "$out" > "$keep"; track_tmp "$keep"
+  ANSWERS=$keep; load_env "$keep"
+  info "settings received from the browser"
+  return 0
+}
+
+reload_answers() { [ -f "$IK_CONF" ] && . "$IK_CONF"; [ -n "$ANSWERS" ] && load_env "$ANSWERS"; return 0; }
 
 show_status() {
   local m
@@ -99,11 +158,12 @@ menu() {
     [ -n "$ssh_tip" ] || { ssh_tip=$(hostname -I 2>/dev/null | awk '{print $1}'); ssh_tip="${ssh_tip:-<this-machine-IP>}"
       say "  Tip: no copy/paste on this screen? From your own computer run:  ssh ${SUDO_USER:-<user>}@$ssh_tip  then  sudo interkit-setup"; }
     i=1; for m in $MODULES; do printf '  %d) %-11s %s\n' "$i" "$m" "$("mod_${m}_desc")"; i=$((i+1)); done
-    echo "  a) all   d) DNS records   v) verify DNS   s) status   q) quit"
+    echo "  a) all   w) enter keys in a browser   d) DNS records   v) verify DNS   s) status   q) quit"
     read -r -p "> " ch || break
     case $ch in
       [1-9]) m=$(echo $MODULES | cut -d' ' -f"$ch"); [ -n "$m" ] && ( reload_answers; run_module "$m" ) ;;
       a) ( reload_answers; run_all ) ;;
+      w) cmd_webui ;;
       d) ( reload_answers; cmd_dns ) ;;
       v) ( reload_answers; cmd_verify ) ;;
       s) reload_answers; show_status ;;
@@ -122,6 +182,7 @@ for arg in "$@"; do
     status) show_status ;;
     all) run_all || exit 1 ;;
     dns) cmd_dns ;;
+    web-ui) cmd_webui || exit 1 ;;
     verify) cmd_verify || exit 1 ;;
     *) run_module "$arg" || exit 1 ;;
   esac
