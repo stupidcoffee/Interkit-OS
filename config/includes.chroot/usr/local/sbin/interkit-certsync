@@ -1,0 +1,34 @@
+#!/bin/bash
+# Copy the certificates that sing-box (ACME provider) obtained into /var/lib/interkit/certs/<host>/
+# so daemons like Postfix and Prosody can use them, and reload those daemons when a certificate changes.
+# sing-box's ACME storage (certmagic) layout is: <data_directory>/certificates/<CA>/<host>/<host>.crt|.key
+set -u
+DEST="${DEST:-}"
+CONF="$DEST/etc/interkit/setup.conf"
+[ -f "$CONF" ] && . "$CONF"
+SRC="${SB_CERT_DIR:-$DEST/var/lib/sing-box/certmagic/certificates}"
+OUT="${IK_CERTS:-$DEST/var/lib/interkit/certs}"
+changed=0
+
+[ -n "${ACME_DOMAINS:-}" ] || { echo "certsync: no ACME_DOMAINS configured" >&2; exit 0; }
+
+for h in $ACME_DOMAINS; do
+  crt=$(find "$SRC" -type f -path "*/$h/$h.crt" 2>/dev/null | head -n1)
+  [ -n "$crt" ] || { echo "certsync: no certificate for $h yet" >&2; continue; }
+  key="${crt%.crt}.key"
+  [ -f "$key" ] || { echo "certsync: key for $h missing" >&2; continue; }
+  d="$OUT/$h"; mkdir -p "$d"
+  if ! cmp -s "$crt" "$d/fullchain.pem" || ! cmp -s "$key" "$d/privkey.pem"; then
+    install -m 0644 "$crt" "$d/fullchain.pem.new" && mv "$d/fullchain.pem.new" "$d/fullchain.pem"
+    ( umask 077; cp "$key" "$d/privkey.pem.new" ) && mv "$d/privkey.pem.new" "$d/privkey.pem"
+    if getent group ssl-cert >/dev/null 2>&1; then chgrp ssl-cert "$d" "$d/privkey.pem"; chmod 0750 "$d"; chmod 0640 "$d/privkey.pem"
+    else chmod 0750 "$d"; chmod 0600 "$d/privkey.pem"; fi
+    echo "certsync: updated $h"; changed=1
+  fi
+done
+
+if [ "$changed" = 1 ] && [ -z "$DEST" ] && [ -d /run/systemd/system ]; then
+  for u in postfix prosody; do systemctl is-active --quiet "$u" && systemctl reload "$u" 2>/dev/null; done
+  systemctl is-active --quiet interkit-fossil-web && grep -q -s -- --cert /etc/systemd/system/interkit-fossil-web.service.d/10-https.conf && systemctl restart interkit-fossil-web
+fi
+exit 0

@@ -1,0 +1,9 @@
+[Unit]
+Description=interkit: daily Fossil snapshot
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

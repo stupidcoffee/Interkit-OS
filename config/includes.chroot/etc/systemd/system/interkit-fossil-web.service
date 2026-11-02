@@ -1,0 +1,19 @@
+[Unit]
+Description=interkit: Fossil web UI (all repos in /var/lib/fossil)
+After=network-online.target interkit-fossil-init.service
+Wants=network-online.target interkit-fossil-init.service
+
+[Service]
+User=fossil
+Group=fossil
+Environment=HOME=/var/lib/fossil
+ExecStart=/usr/bin/fossil server /var/lib/fossil --repolist --port 8080
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/fossil
+
+[Install]
+WantedBy=multi-user.target

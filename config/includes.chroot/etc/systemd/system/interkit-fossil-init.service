@@ -1,0 +1,13 @@
+[Unit]
+Description=interkit: first-boot Fossil repo setup
+ConditionPathExists=!/var/lib/fossil/.initialized
+After=local-fs.target live-config.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/interkit-fossil-init
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

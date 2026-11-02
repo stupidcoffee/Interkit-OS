@@ -1,0 +1,10 @@
+[Unit]
+Description=interkit: copy sing-box ACME certificates for other services (timer)
+
+[Timer]
+OnBootSec=2min
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

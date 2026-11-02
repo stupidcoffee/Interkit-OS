@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+# The package ships a default config with a Shadowsocks inbound on :8080 and a
+# published password. Keep ONLY our config (the unit loads every *.json in the dir).
+find /etc/sing-box -maxdepth 1 -name '*.json' ! -name config.json -delete
+# Only root and the sing-box service user may read the config directory (it will hold API tokens).
+if getent group sing-box >/dev/null; then chgrp sing-box /etc/sing-box; chmod 0750 /etc/sing-box; fi
+# Fail the build now if the config is invalid.
+sing-box -D /tmp check -C /etc/sing-box
+# System clock: Debian's default systemd-timesyncd. sing-box's NTP only feeds its own protocols.
+systemctl enable systemd-timesyncd.service
+systemctl enable sing-box.service

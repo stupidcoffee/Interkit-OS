@@ -1,0 +1,20 @@
+#!/bin/bash
+# Keep Cloudflare DNS A/AAAA records pointed at this machine's public IP (hosts in $DDNS_HOSTS).
+set -u
+LIB="${IK_LIB:-/usr/lib/interkit}"
+# shellcheck disable=SC1091
+. "$LIB/setup-lib.sh"
+[ -f "$IK_CONF" ] && . "$IK_CONF"
+DDNS_HOSTS=$(dns_a_hosts); [ -n "${CF_ZONE:-}" ] && [ -n "$DDNS_HOSTS" ] || die "dynamic DNS is not configured (run: interkit-setup cloudflare)"
+need jq; need curl
+
+ip4=$(curl -fsS4 --max-time 15 https://cloudflare.com/cdn-cgi/trace 2>/dev/null | sed -n 's/^ip=//p')
+ip6=$(curl -fsS6 --max-time 15 https://cloudflare.com/cdn-cgi/trace 2>/dev/null | sed -n 's/^ip=//p')
+[ -n "$ip4$ip6" ] || die "could not determine the public IP address"
+
+zid=$(cf_zone_id "$CF_ZONE"); [ -n "$zid" ] || die "Cloudflare zone not found: $CF_ZONE"
+for h in $DDNS_HOSTS; do
+  [ -n "$ip4" ] && cf_rec "$zid" A "$h" "$ip4" && echo "ddns: $h A $ip4"
+  [ -n "$ip6" ] && cf_rec "$zid" AAAA "$h" "$ip6" && echo "ddns: $h AAAA $ip6"
+done
+exit 0

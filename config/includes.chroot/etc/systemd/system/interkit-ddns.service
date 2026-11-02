@@ -1,0 +1,8 @@
+[Unit]
+Description=interkit: update Cloudflare DNS with this machine's public IP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/interkit-ddns

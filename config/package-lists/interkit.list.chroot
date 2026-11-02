@@ -1,0 +1,17 @@
+# Headless base (no desktop)
+openssh-server
+sudo
+curl
+wget
+git
+vim
+htop
+network-manager
+fossil
+fastfetch
+sing-box
+systemd-timesyncd
+jq
+ssl-cert
+bind9-dnsutils
+kbd

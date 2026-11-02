@@ -1,0 +1,6 @@
+#!/bin/sh
+# interkit: after Inter Mono (GRUB_FONT), also load GRUB's unicode font so glyphs it lacks still render
+[ -f /boot/grub/fonts/unicode.pf2 ] || exit 0
+cat <<'GRUBEOF'
+if loadfont /boot/grub/fonts/unicode.pf2 ; then true ; fi
+GRUBEOF

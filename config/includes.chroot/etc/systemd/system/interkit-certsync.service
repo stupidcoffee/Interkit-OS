@@ -1,0 +1,8 @@
+[Unit]
+Description=interkit: copy sing-box ACME certificates for other services
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/interkit-certsync

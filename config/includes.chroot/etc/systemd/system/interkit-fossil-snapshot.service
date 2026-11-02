@@ -1,0 +1,7 @@
+[Unit]
+Description=interkit: snapshot /etc into Fossil
+After=interkit-fossil-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/interkit-fossil-snapshot

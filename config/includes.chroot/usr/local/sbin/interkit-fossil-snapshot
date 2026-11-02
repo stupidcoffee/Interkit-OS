@@ -1,0 +1,12 @@
+#!/bin/sh
+# Commit the current /etc state into config.fossil.
+export HOME=/root
+D=/var/lib/fossil
+export FOSSIL_USER=admin
+dpkg --get-selections > /etc/interkit-packages.list 2>/dev/null
+for pair in config:/etc; do
+  dir=${pair#*:}
+  [ -d "$dir" ] && (cd "$dir" && fossil settings allow-symlinks on >/dev/null && fossil addremove >/dev/null 2>&1; for t in 1 2 3; do fossil commit -m "auto snapshot $(date -Is)" --no-warnings 2>&1 | grep -v -i "nothing has changed" | grep -q . || break; sleep 5; done) || true
+done
+chown -R fossil:fossil "$D"
+chmod 750 "$D"; chmod 600 "$D"/*.fossil   # repo holds /etc contents: not world-readable

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+echo "interkit" > /etc/hostname
+
+# Replace the symlink /etc/os-release -> /usr/lib/os-release with our own file.
+rm -f /etc/os-release
+cat > /etc/os-release <<'OS'
+PRETTY_NAME="interkit"
+NAME="interkit"
+VERSION_ID="0.1"
+VERSION="0.1 (trixie)"
+VERSION_CODENAME=trixie
+ID=interkit
+ID_LIKE=debian
+OS

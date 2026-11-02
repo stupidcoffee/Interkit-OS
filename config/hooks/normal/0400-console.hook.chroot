@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+# load the Inter Mono console font at boot (the unit does nothing if the font file is absent)
+systemctl enable interkit-console-font.service

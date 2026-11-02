@@ -1,0 +1,127 @@
+#!/bin/bash
+# interkit-setup - guided setup for Cloudflare, DERP, XMPP and mail (in the spirit of setup-alpine).
+set -u
+LIB="${IK_LIB:-/usr/lib/interkit}"
+# shellcheck disable=SC1091
+. "$LIB/setup-lib.sh"
+
+MODULES="domain cloudflare web derp xmpp postfix"
+ANSWERS=""
+
+usage() {
+  cat <<'EOF'
+Usage: interkit-setup [options] [module ...]
+
+Modules:   domain      your domain, host names (mail.xxx.com, chat.xxx.com ...) and certificate method (start here)
+           cloudflare  OPTIONAL: Cloudflare API (auto DNS records, no open port 80, tunnel)
+           web         admin web UI (Fossil) over HTTPS
+           derp        DERP relay (sing-box service)
+           xmpp        XMPP server (Prosody)
+           postfix     mail server (Postfix + DKIM) with the Alpine mail client
+           all         domain, then the service modules (cloudflare only if you chose it)
+           dns         show the DNS records to add at your DNS provider (copy/paste; also a Fossil wiki page)
+           verify      check those DNS records, then request the certificates
+           status      show what is configured
+
+Options:   -f FILE     read answers (VAR=value lines) from FILE, like setup-alpine -f
+           -q          non-interactive: never prompt; use answers, environment and defaults
+           -n          dry run: write files under $DEST only; no apt, systemctl or network
+           -h          this help
+
+With no module a menu is shown. Answers are saved in /etc/interkit/setup.conf, secrets in
+/etc/interkit/secrets/ (not committed to the Fossil config repo). Documentation: docs/setup.md
+EOF
+}
+
+while getopts "f:qnh" o; do
+  case $o in
+    f) ANSWERS=$OPTARG;; q) IK_QUIET=1;; n) IK_DRYRUN=1;; h) usage; exit 0;; *) usage; exit 2;;
+  esac
+done
+shift $((OPTIND-1))
+export IK_QUIET IK_DRYRUN
+
+if [ "$(id -u)" != 0 ] && [ -z "$DEST" ]; then die "run as root (sudo interkit-setup)"; fi
+[ -f "$IK_CONF" ] && . "$IK_CONF"
+if [ -n "$ANSWERS" ]; then [ -f "$ANSWERS" ] || die "answer file not found: $ANSWERS"; . "$ANSWERS"; fi
+
+for f in "$LIB"/setup.d/*.sh; do . "$f"; done
+
+reload_answers() { [ -f "$IK_CONF" ] && . "$IK_CONF"; [ -n "$ANSWERS" ] && . "$ANSWERS"; return 0; }
+
+show_status() {
+  local m
+  for m in $MODULES; do echo "${c_b}$m${c_0}"; "mod_${m}_status"; done
+  if [ -d "$IK_CERTS" ]; then
+    echo "${c_b}certificates${c_0}"
+    for d in "$IK_CERTS"/*/; do
+      [ -s "${d}fullchain.pem" ] || continue
+      printf '  %-32s %s\n' "$(basename "$d")" "$(openssl x509 -enddate -noout -in "${d}fullchain.pem" 2>/dev/null)"
+    done
+  fi
+}
+
+run_module() {
+  case " $MODULES " in *" $1 "*) ;; *) die "unknown module: $1 (try: $MODULES all status)";; esac
+  "mod_${1}_run"
+}
+
+cmd_dns() { require_domain; dns_guide; }
+cmd_verify() {
+  require_domain
+  dns_verify; local rc=$?
+  if [ "$rc" = 0 ] && [ -n "${ACME_PENDING:-}" ]; then
+    info "DNS is ready: requesting certificates from Let's Encrypt (through sing-box)"
+    acme_write
+    [ "$IK_DRYRUN" = 1 ] || /usr/local/sbin/interkit-certsync >/dev/null 2>&1
+    say "  Certificates usually arrive within a minute or two: interkit-setup status"
+  fi
+  return "$rc"
+}
+run_all() {
+  run_module domain || return 1
+  reload_answers
+  [ "${ACME_CHALLENGE:-http}" = dns-cloudflare ] && { run_module cloudflare || return 1; }
+  for m in web derp xmpp postfix; do run_module "$m" || return 1; done
+}
+
+finish() {
+  # record what we just configured in the Fossil config repo (if the snapshot unit exists)
+  [ "$IK_DRYRUN" = 1 ] && return 0
+  have_systemd && systemctl cat interkit-fossil-snapshot.service >/dev/null 2>&1 && systemctl start interkit-fossil-snapshot.service 2>/dev/null
+  return 0
+}
+
+menu() {
+  local ch i m
+  while :; do
+    echo; echo "${c_b}interkit setup${c_0}"
+    i=1; for m in $MODULES; do printf '  %d) %-11s %s\n' "$i" "$m" "$("mod_${m}_desc")"; i=$((i+1)); done
+    echo "  a) all   d) DNS records   v) verify DNS   s) status   q) quit"
+    read -r -p "> " ch || break
+    case $ch in
+      [1-9]) m=$(echo $MODULES | cut -d' ' -f"$ch"); [ -n "$m" ] && ( reload_answers; run_module "$m" ) ;;
+      a) ( reload_answers; run_all ) ;;
+      d) ( reload_answers; cmd_dns ) ;;
+      v) ( reload_answers; cmd_verify ) ;;
+      s) reload_answers; show_status ;;
+      q|"") break ;;
+    esac
+  done
+}
+
+if [ $# -eq 0 ]; then
+  [ "$IK_QUIET" = 1 ] && { usage; exit 2; }
+  menu; finish; exit 0
+fi
+
+for arg in "$@"; do
+  case $arg in
+    status) show_status ;;
+    all) run_all || exit 1 ;;
+    dns) cmd_dns ;;
+    verify) cmd_verify || exit 1 ;;
+    *) run_module "$arg" || exit 1 ;;
+  esac
+done
+finish

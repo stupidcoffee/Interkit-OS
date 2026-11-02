@@ -1,0 +1,267 @@
+#!/bin/bash
+# interkit-setup shared helpers. Sourced by interkit-setup, its modules and helper scripts.
+#
+# Test / dry-run:  DEST=/some/dir  prefixes every file the tool writes;
+#                  IK_DRYRUN=1     skips apt, systemctl and network calls.
+#                  IK_QUIET=1      never prompts (answers come from the environment / answer file / defaults).
+
+DEST="${DEST:-}"
+IK_DIR="$DEST/etc/interkit"
+IK_CONF="$IK_DIR/setup.conf"
+IK_SECRETS="$IK_DIR/secrets"
+IK_CERTS="$DEST/var/lib/interkit/certs"
+SB_DIR="$DEST/etc/sing-box"
+SB_DATA="/var/lib/sing-box"          # path as seen by the sing-box service
+IK_DRYRUN="${IK_DRYRUN:-0}"
+IK_QUIET="${IK_QUIET:-0}"
+
+c_b=$'\e[1m'; c_y=$'\e[33m'; c_r=$'\e[31m'; c_g=$'\e[32m'; c_0=$'\e[0m'
+say()  { printf '%s\n' "$*"; }
+info() { printf '%s==>%s %s\n' "$c_g" "$c_0" "$*"; }
+warn() { printf '%swarning:%s %s\n' "$c_y" "$c_0" "$*" >&2; }
+die()  { printf '%serror:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
+run()  { if [ "$IK_DRYRUN" = 1 ]; then say "[dry-run] $*"; else "$@"; fi; }
+
+# ---- prompting -------------------------------------------------------------------------------
+# ask VAR "Prompt" [default]    value comes from $VAR if already set, else prompt (required)
+ask() {
+  local var=$1 prompt=$2 def=${3:-} reply
+  [ -n "${!var:-}" ] && return 0
+  if [ "$IK_QUIET" = 1 ]; then
+    [ -n "$def" ] || die "missing answer: $var (non-interactive mode)"
+    printf -v "$var" '%s' "$def"; return 0
+  fi
+  read -r -p "$prompt${def:+ [$def]}: " reply
+  printf -v "$var" '%s' "${reply:-$def}"
+  [ -n "${!var}" ] || die "$var is required"
+}
+# ask_opt VAR "Prompt" [default]   like ask, but an empty answer is fine
+ask_opt() {
+  local var=$1 prompt=$2 def=${3:-} reply
+  [ -n "${!var:-}" ] && return 0
+  if [ "$IK_QUIET" = 1 ]; then printf -v "$var" '%s' "$def"; return 0; fi
+  read -r -p "$prompt${def:+ [$def]}: " reply
+  printf -v "$var" '%s' "${reply:-$def}"
+}
+# yesno VAR "Prompt" y|n    sets VAR to y or n
+yesno() {
+  local var=$1 prompt=$2 def=${3:-n} reply
+  case "${!var:-}" in y|Y|yes) printf -v "$var" y; return 0;; n|N|no) printf -v "$var" n; return 0;; esac
+  if [ "$IK_QUIET" = 1 ]; then printf -v "$var" '%s' "$def"; return 0; fi
+  read -r -p "$prompt [$def]: " reply; reply=${reply:-$def}
+  case "$reply" in y|Y|yes) printf -v "$var" y;; *) printf -v "$var" n;; esac
+}
+
+# randpw N  -> N random alphanumeric characters; aborts if that fails (never returns an empty secret)
+randpw() {
+  local v; v=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c "$1")
+  [ "${#v}" = "$1" ] || die "could not generate a random value"
+  printf '%s' "$v"
+}
+
+# ---- answers & secrets -----------------------------------------------------------------------
+save_answer() {  # save_answer VAR...   (non-secret answers only)
+  local v; mkdir -p "$IK_DIR"; touch "$IK_CONF"
+  for v in "$@"; do
+    grep -v "^$v=" "$IK_CONF" > "$IK_CONF.tmp" 2>/dev/null || true
+    printf '%s=%q\n' "$v" "${!v}" >> "$IK_CONF.tmp"
+    mv "$IK_CONF.tmp" "$IK_CONF"
+  done
+  chmod 644 "$IK_CONF"
+}
+put_secret() {   # put_secret NAME VALUE
+  ( umask 077; mkdir -p "$IK_SECRETS"; printf '%s' "$2" > "$IK_SECRETS/$1.secret" )
+  chmod 700 "$IK_SECRETS"; chmod 600 "$IK_SECRETS/$1.secret"
+}
+get_secret() { cat "$IK_SECRETS/$1.secret" 2>/dev/null; }
+have_secret() { [ -s "$IK_SECRETS/$1.secret" ]; }
+# ask_secret VAR NAME "Prompt"   -> VAR from env, else stored secret NAME, else prompt (hidden)
+ask_secret() {
+  local var=$1 name=$2 prompt=$3 reply
+  if [ -n "${!var:-}" ]; then put_secret "$name" "${!var}"; return 0; fi
+  if have_secret "$name"; then printf -v "$var" '%s' "$(get_secret "$name")"; return 0; fi
+  [ "$IK_QUIET" = 1 ] && die "missing secret: $var (non-interactive mode)"
+  read -r -s -p "$prompt: " reply; echo
+  [ -n "$reply" ] || die "$var is required"
+  printf -v "$var" '%s' "$reply"; put_secret "$name" "$reply"
+}
+# ask_secret_opt VAR NAME "Prompt"  -> like ask_secret but empty is allowed (VAR stays empty)
+ask_secret_opt() {
+  local var=$1 name=$2 prompt=$3 reply
+  if [ -n "${!var:-}" ]; then put_secret "$name" "${!var}"; return 0; fi
+  if have_secret "$name"; then printf -v "$var" '%s' "$(get_secret "$name")"; return 0; fi
+  [ "$IK_QUIET" = 1 ] && return 0
+  read -r -s -p "$prompt (empty to skip): " reply; echo
+  [ -n "$reply" ] && { printf -v "$var" '%s' "$reply"; put_secret "$name" "$reply"; }
+  return 0
+}
+
+# ---- system helpers --------------------------------------------------------------------------
+have_systemd() { [ -d /run/systemd/system ]; }
+svc() {  # svc enable|restart|reload|stop UNIT...
+  local a=$1; shift
+  if [ "$IK_DRYRUN" = 1 ]; then say "[dry-run] systemctl $a $*"; return 0; fi
+  have_systemd || { warn "systemd is not running: skipped 'systemctl $a $*'"; return 0; }
+  case $a in enable) systemctl enable --now "$@";; *) systemctl "$a" "$@";; esac
+}
+apt_install() {
+  if [ "$IK_DRYRUN" = 1 ]; then say "[dry-run] apt-get install -y $*"; return 0; fi
+  if [ -z "${IK_APT_UPDATED:-}" ]; then DEBIAN_FRONTEND=noninteractive apt-get update -qq; IK_APT_UPDATED=1; fi
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+}
+need() { command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not installed"; }
+
+# ---- Cloudflare API --------------------------------------------------------------------------
+CF_API=https://api.cloudflare.com/client/v4
+cf() {  # cf METHOD PATH [json-body]
+  local m=$1 p=$2 d=${3:-}
+  if [ "$IK_DRYRUN" = 1 ]; then say "[dry-run] cloudflare $m $p ${d:+$d}" >&2; echo '{"success":true,"result":[{"id":"dryrun"}]}'; return 0; fi
+  have_secret cloudflare || die "no Cloudflare API token stored (run: interkit-setup cloudflare)"
+  # the token goes through a process-substitution header file so it never appears in `ps`
+  if [ -n "$d" ]; then
+    curl -fsS -X "$m" "$CF_API$p" -H @<(printf 'Authorization: Bearer %s\n' "$(get_secret cloudflare)") \
+      -H 'Content-Type: application/json' --data "$d"
+  else
+    curl -fsS -X "$m" "$CF_API$p" -H @<(printf 'Authorization: Bearer %s\n' "$(get_secret cloudflare)") \
+      -H 'Content-Type: application/json'
+  fi
+}
+cf_zone_id() { cf GET "/zones?name=$1" | jq -r '.result[0].id // empty'; }
+# cf_upsert ZONE_ID TYPE NAME BODY_JSON    create the record, or update it if type+name already exists
+cf_upsert() {
+  local z=$1 t=$2 n=$3 body=$4 id
+  id=$(cf GET "/zones/$z/dns_records?type=$t&name=$n" | jq -r '.result[0].id // empty')
+  if [ -n "$id" ]; then cf PUT "/zones/$z/dns_records/$id" "$body" >/dev/null
+  else cf POST "/zones/$z/dns_records" "$body" >/dev/null; fi
+}
+cf_rec() {  # cf_rec ZONE_ID TYPE NAME CONTENT [PRIORITY]  -> simple records (A, AAAA, TXT, MX, CNAME); never proxied
+  local z=$1 t=$2 n=$3 c=$4 p=${5:-}
+  cf_upsert "$z" "$t" "$n" "$(jq -nc --arg t "$t" --arg n "$n" --arg c "$c" --arg p "$p" \
+    '{type:$t,name:$n,content:$c,ttl:1} + (if $t=="A" or $t=="AAAA" or $t=="CNAME" then {proxied:false} else {} end) + (if $p!="" then {priority:($p|tonumber)} else {} end)')"
+}
+# cf_rec_safe ZONE_ID TYPE NAME CONTENT [PRIORITY]   for MX and policy TXT records (SPF, DMARC, DKIM):
+# never overwrites an existing record that differs; warns and skips instead, so existing mail keeps working.
+cf_rec_safe() {
+  local z=$1 t=$2 n=$3 c=$4 p=${5:-} existing pre
+  existing=$(cf GET "/zones/$z/dns_records?type=$t&name=$n" | jq -c '.result // []')
+  if [ "$IK_DRYRUN" = 1 ]; then existing='[]'; fi
+  if [ "$(printf '%s' "$existing" | jq 'length')" = 0 ]; then cf_rec "$z" "$t" "$n" "$c" "$p"; return 0; fi
+  if [ "$t" = MX ]; then
+    if printf '%s' "$existing" | jq -e --arg c "$c" 'map(select(.content==$c))|length>0' >/dev/null; then return 0; fi
+    warn "MX records already exist for $n and none points to $c: not replacing them. Update the MX by hand."
+    return 0
+  fi
+  # TXT: same content = done; same policy prefix but different content = do not clobber; unrelated TXT coexists
+  pre=$(printf '%s' "$c" | sed -n 's/^\(v=[A-Za-z0-9]*\).*/\1/p')
+  if printf '%s' "$existing" | jq -e --arg c "$c" 'map(select(.content==$c))|length>0' >/dev/null; then return 0; fi
+  if [ -n "$pre" ] && printf '%s' "$existing" | jq -e --arg p "$pre" 'map(select(.content|startswith($p)))|length>0' >/dev/null; then
+    warn "a $pre TXT record already exists at $n with different content: not replacing it. Merge it by hand: $c"
+    return 0
+  fi
+  cf POST "/zones/$z/dns_records" "$(jq -nc --arg t "$t" --arg n "$n" --arg c "$c" '{type:$t,name:$n,content:$c,ttl:1}')" >/dev/null
+}
+
+cf_srv() {  # cf_srv ZONE_ID NAME PORT TARGET
+  cf_upsert "$1" SRV "$2" "$(jq -nc --arg n "$2" --argjson port "$3" --arg tg "$4" \
+    '{type:"SRV",name:$n,ttl:1,data:{priority:0,weight:5,port:$port,target:$tg}}')"
+}
+
+# ---- sing-box config fragments ---------------------------------------------------------------
+# The packaged service runs `sing-box -C /etc/sing-box`, which merges every *.json there.
+# Fragments with secrets are named *.secret.json (git/fossil-ignored, 0640 root:sing-box).
+sb_write() {  # sb_write NAME   (JSON on stdin) -- validates the merged config, restarts, rolls back on failure
+  local f="$SB_DIR/$1" tmp
+  mkdir -p "$SB_DIR"; tmp=$(mktemp)
+  # the directory is readable only by root and the sing-box service user
+  getent group sing-box >/dev/null 2>&1 && { chgrp sing-box "$SB_DIR"; chmod 0750 "$SB_DIR"; }
+  cat > "$tmp"
+  jq -e . "$tmp" >/dev/null || { rm -f "$tmp"; die "generated invalid JSON for $1"; }
+  [ -f "$f" ] && cp -a "$f" "$f.prev"
+  install -m 0640 -g sing-box "$tmp" "$f" 2>/dev/null || install -m 0640 "$tmp" "$f"
+  rm -f "$tmp"
+  if [ "$IK_DRYRUN" != 1 ] && command -v sing-box >/dev/null 2>&1; then
+    if ! sing-box -D /tmp check -C "$SB_DIR"; then
+      if [ -f "$f.prev" ]; then mv "$f.prev" "$f"; else rm -f "$f"; fi
+      die "sing-box rejected $1 (change rolled back)"
+    fi
+  else
+    warn "sing-box config check skipped"
+  fi
+  rm -f "$f.prev"
+  svc restart sing-box
+}
+
+# acme_write: (re)generate the ACME certificate provider for every host in $ACME_DOMAINS.
+#   ACME_CHALLENGE=http            (default) HTTP-01 on port 80: no API keys, but each host's A record must already point here
+#   ACME_CHALLENGE=dns-cloudflare  DNS-01 through the Cloudflare API: no open port, needs the token (module: cloudflare)
+# sing-box only manages a certificate provider that something references, so a loopback-only Trojan inbound
+# (random password, never used by anyone) references it as an "anchor". (A 'direct' inbound has no tls support.)
+acme_write() {
+  local doms anchor_pw tok="" challenge="${ACME_CHALLENGE:-http}"
+  [ -n "${ACME_DOMAINS:-}" ] || die "no certificate hostnames configured"
+  if [ "$challenge" = dns-cloudflare ]; then
+    tok=$(get_secret cloudflare) || true
+    [ -n "$tok" ] || [ "$IK_DRYRUN" = 1 ] || die "Cloudflare token missing"
+  elif [ "$IK_DRYRUN" != 1 ] && [ "${IK_SKIP_DNS_CHECK:-0}" != 1 ]; then
+    # Let's Encrypt limits failed validations, so only ask once DNS points here
+    if ! hosts_resolve_here "$ACME_DOMAINS"; then
+      ACME_PENDING=1; save_answer ACME_PENDING
+      warn "certificates NOT requested yet: DNS is not ready. Add the records (interkit-setup dns), then run: interkit-setup verify"
+      return 0
+    fi
+  fi
+  ACME_PENDING=""; save_answer ACME_PENDING
+  have_secret anchor || put_secret anchor "$(randpw 32)"
+  anchor_pw=$(get_secret anchor)
+  doms=$(printf '%s\n' $ACME_DOMAINS | jq -R . | jq -sc .)
+  # secrets go to jq through the environment, not argv (argv is visible to every user in `ps`)
+  IK_TOK="${tok:-DRYRUN}" IK_PW="$anchor_pw" jq -n --argjson d "$doms" --arg email "${ACME_EMAIL:-}" --arg mode "$challenge" \
+        --arg host "${ACME_DOMAINS%% *}" --arg dd "$SB_DATA/certmagic" '
+    ( { type: "acme", tag: "interkit-acme", domain: $d, data_directory: $dd, email: $email, provider: "letsencrypt" }
+      + ( if $mode == "dns-cloudflare" then { dns01_challenge: { provider: "cloudflare", api_token: env.IK_TOK } }
+          else { disable_tls_alpn_challenge: true } end ) ) as $prov
+    | { certificate_providers: [ $prov ],
+        inbounds: [ { type: "trojan", tag: "interkit-cert-anchor", listen: "127.0.0.1", listen_port: 18443,
+                      users: [ { name: "anchor", password: env.IK_PW } ],
+                      tls: { enabled: true, server_name: $host, certificate_provider: "interkit-acme" } } ] }' \
+    | sb_write 20-acme.secret.json
+}
+acme_add() {  # acme_add HOST...   add hostnames to the certificate list (and save)
+  local h
+  for h in "$@"; do
+    case " ${ACME_DOMAINS:-} " in *" $h "*) ;; *) ACME_DOMAINS="${ACME_DOMAINS:+$ACME_DOMAINS }$h";; esac
+  done
+  save_answer ACME_DOMAINS
+}
+
+# wait_cert HOST [seconds]   run certsync until HOST's certificate has been issued by sing-box
+wait_cert() {
+  local h=$1 t=${2:-600} n=0
+  [ "$IK_DRYRUN" = 1 ] && { say "[dry-run] wait for certificate of $h"; return 0; }
+  [ -z "${ACME_PENDING:-}" ] || { warn "$h: certificate pending (DNS not ready); configuration is written, TLS starts working once it is issued"; return 1; }
+  info "waiting for sing-box to obtain the certificate for $h (DNS-01 can take a few minutes)..."
+  while [ "$n" -lt "$t" ]; do
+    /usr/local/sbin/interkit-certsync >/dev/null 2>&1
+    [ -s "$IK_CERTS/$h/fullchain.pem" ] && { info "certificate for $h is ready"; return 0; }
+    sleep 10; n=$((n+10))
+  done
+  warn "no certificate for $h after ${t}s. Check: journalctl -u sing-box -e"
+  return 1
+}
+
+# require_cloudflare: the Cloudflare module provides the certificates every other module needs
+require_cloudflare() {
+  [ -n "${CF_ZONE:-}" ] && [ -n "${ACME_EMAIL:-}" ] && have_secret cloudflare \
+    || die "run the cloudflare module first: interkit-setup cloudflare"
+}
+
+# require_domain: the domain module provides the base domain, hostnames and certificate method every service needs
+require_domain() {
+  [ -n "${BASE_DOMAIN:-}" ] && [ -n "${ACME_EMAIL:-}" ] || die "run the domain module first: interkit-setup domain"
+  MAIL_HOST="${MAIL_HOST:-mail.$BASE_DOMAIN}"; CHAT_HOST="${CHAT_HOST:-chat.$BASE_DOMAIN}"
+  DERP_HOST="${DERP_HOST:-derp.$BASE_DOMAIN}"; WEB_HOST="${WEB_HOST:-fossil.$BASE_DOMAIN}"
+  ACME_CHALLENGE="${ACME_CHALLENGE:-http}"
+}
+
+# shellcheck disable=SC1091
+. "${IK_LIB:-/usr/lib/interkit}/dns-lib.sh"

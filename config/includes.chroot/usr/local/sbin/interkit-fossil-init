@@ -1,0 +1,42 @@
+#!/bin/sh
+# First boot: create config.fossil (tracks /etc), lock down access.
+set -eu
+export HOME=/root   # systemd runs services without HOME; fossil needs one
+D=/var/lib/fossil
+export FOSSIL_USER=admin
+mkdir -p "$D"
+PW=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 16)
+[ "${#PW}" = 16 ] || { echo 'interkit: could not generate a password' >&2; exit 1; }
+
+init_repo() {  # name dir ignore-globs
+  name=$1; dir=$2; ignore=$3; repo=$D/$name.fossil
+  [ -f "$repo" ] || fossil new --admin-user admin "$repo" >/dev/null
+  fossil user password admin "$PW" -R "$repo" >/dev/null
+  fossil user capabilities nobody "" -R "$repo" >/dev/null
+  fossil user capabilities anonymous "" -R "$repo" >/dev/null
+  mkdir -p "$dir"
+  cd "$dir"
+  fossil open --force "$repo" >/dev/null 2>&1 || true
+  fossil settings ignore-glob "$ignore" >/dev/null
+  fossil settings allow-symlinks on >/dev/null   # /etc is full of symlinks
+  # At first boot other services (live-config, NetworkManager, ...) are still writing files in /etc, and Fossil
+  # refuses a commit if the tree changes underneath it. Retry until the tree settles.
+  try=0; out=""
+  while [ "$try" -lt 8 ]; do
+    fossil addremove >/dev/null 2>&1 || true
+    if out=$(fossil commit -m "initial snapshot" --no-warnings 2>&1); then out=""; break; fi
+    case "$out" in *"nothing has changed"*) out=""; break;; esac
+    try=$((try+1)); sleep 5
+  done
+  [ -z "$out" ] || echo "interkit: initial commit of $dir failed after $try tries: $out"
+}
+
+dpkg --get-selections > /etc/interkit-packages.list 2>/dev/null || true
+init_repo config /etc '*shadow*,*ssh_host_*,*/private/*,*.key,*.private,*privkey*,*private_key*,*secret*,*credstore*,*/system-connections/*,wireguard/*,openvpn/*,*/wireguard/*,*/openvpn/*,*.p12,*.pfx,*.dpkg-*,*.ucf-*,machine-id,_FOSSIL_,.fslckout'
+
+chown -R fossil:fossil "$D"
+chmod 750 "$D"; chmod 600 "$D"/*.fossil   # repo holds /etc contents: not world-readable
+umask 077
+echo "$PW" > /root/fossil-admin-password
+touch "$D/.initialized"
+echo "interkit: Fossil web UI on port 8080 - user: admin  password: $PW  (also in /root/fossil-admin-password)"
