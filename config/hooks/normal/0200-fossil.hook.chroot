@@ -1,5 +1,5 @@
 #!/bin/sh
 set -e
 id fossil >/dev/null 2>&1 || useradd --system --home-dir /var/lib/fossil --create-home --shell /usr/sbin/nologin fossil
-chmod +x /usr/local/sbin/interkit-fossil-init /usr/local/sbin/interkit-fossil-snapshot /usr/local/sbin/interkit-setup /usr/local/sbin/interkit-certsync /usr/local/sbin/interkit-ddns /usr/local/sbin/interkit-console-font
+chmod +x /usr/local/sbin/interkit-fossil-init /usr/local/sbin/interkit-fossil-snapshot /usr/local/sbin/interkit-setup /usr/local/sbin/interkit-certsync /usr/local/sbin/interkit-ddns
 systemctl enable interkit-fossil-init.service interkit-fossil-web.service interkit-fossil-snapshot.timer

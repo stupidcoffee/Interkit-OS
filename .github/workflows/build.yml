@@ -1,8 +1,15 @@
 name: build-iso
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+    paths-ignore: ["docs/**", "**.md", "branding/**"]
   workflow_dispatch:
+
+# a newer push supersedes a build still running for the same ref
+concurrency:
+  group: build-iso-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -27,17 +34,28 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  # v* tag  -> normal release named after the tag
+  # push to main / manual run -> rolling pre-release "latest", moved to the new commit with its ISOs replaced
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Move the rolling "latest" tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          git tag -f latest "$GITHUB_SHA"
+          git push -f origin refs/tags/latest
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('latest ({0})', substr(github.sha, 0, 7)) }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          overwrite_files: true
           files: dist/*
