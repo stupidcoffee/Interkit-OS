@@ -69,6 +69,8 @@ elif [ -z "$ANSWERS" ] && [ "$IK_QUIET" != 1 ] && [ $# -eq 0 ]; then
   fi
 fi
 
+for f in "$LIB"/setup.d/*.sh; do . "$f"; done
+
 # web-ui: a one-time HTTPS form (webui.py) so the domain and API keys can be entered from another computer's browser,
 # where copy/paste works. Self-signed throw-away certificate (check the fingerprint), one-time code, runs as "nobody".
 cmd_webui() {

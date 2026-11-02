@@ -24,6 +24,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check interkit-setup (dry run, no network)
+        run: bash scripts/test-setup.sh
       - name: Build ISO in Debian container
         run: |
           docker run --rm --privileged -v "$PWD":/work -w /work \
